@@ -6,7 +6,7 @@ from network_layer.communication_bus import CommunicationBus
 from sim_layer.utils import convert_time
 
 
-class SmartMeter:
+class RemoteTerminalUnit:
     def __init__(self, env: simpy.Environment, name: str, bus: CommunicationBus, voltage: float = 676767.0):
         self.env = env
         self.name = name

@@ -33,4 +33,4 @@ class PowerStation:
     def listen_cb(self, cmd: dict[str, Any]):
         if cmd.get("action") == "reduce_voltage":
             self.voltage -= cmd.get("volts", 10)
-            print(f"{convert_time(self.env.now)}:{self.name} executed cmd: {cmd}, new voltage={self.voltage}")
+            print(f"[{convert_time(self.env.now)}] {self.name} executed cmd: {cmd}, new voltage={self.voltage}")

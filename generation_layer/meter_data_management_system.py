@@ -7,7 +7,7 @@ from generation_layer.power_station import PowerStation
 from sim_layer.utils import convert_time
 
 
-class SCADA:
+class MeterDataManagementSystem:
     def __init__(self, env: simpy.Environment, bus: CommunicationBus, stations: dict[str, PowerStation]):
         self.env = env
         self.bus = bus
