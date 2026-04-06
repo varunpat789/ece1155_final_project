@@ -7,11 +7,12 @@ from generation_layer.power_station import PowerStation
 from sim_layer.utils import convert_time
 
 
+# handles smart meters, relays to scada
 class MeterDataManagementSystem:
-    def __init__(self, env: simpy.Environment, bus: CommunicationBus, stations: dict[str, PowerStation]):
+    def __init__(self, env: simpy.Environment, bus: CommunicationBus, smart_meters: dict[str, PowerStation]):
         self.env = env
         self.bus = bus
-        self.stations = stations
+        self.smart_meters = smart_meters
 
     def run(self):
         while True:
@@ -30,6 +31,6 @@ class MeterDataManagementSystem:
             size=64,
             data=cmd,
         )
-        
+
         print(f"[{convert_time(self.env.now)}]  SCADA -> {target}: {cmd}")
         self.bus.send(pkt)

@@ -1,13 +1,11 @@
 from typing import Any
-
 import simpy
 from network_layer.packet import Packet
 from network_layer.communication_bus import CommunicationBus
 from sim_layer.utils import convert_time
 
-
 class SmartMeter:
-    def __init__(self, env: simpy.Environment, name: str, bus: CommunicationBus, voltage: float = 676767.0):
+    def __init__(self, env: simpy.Environment, name: str, bus: CommunicationBus, voltage: float = 120.0):
         self.env = env
         self.name = name
         self.bus = bus
@@ -17,10 +15,10 @@ class SmartMeter:
         while True:
             pkt = Packet(
                 source=self.name,
-                destination="SCADA",
+                destination="MDMS",  # Send to MDMS, not SCADA
                 timestamp=self.env.now,
                 size=64,
-                data={"voltage": self.voltage},
+                data={"voltage": self.voltage, "type": "meter_reading"},
             )
             self.bus.send(pkt)
             yield self.env.timeout(5)
