@@ -6,25 +6,58 @@ from sim_layer.utils import convert_time
 
 
 class SCADA:
-    def __init__(self, env: simpy.Environment, bus: CommunicationBus, known_nodes: list[str]):
+    MAX_RTU_OUTPUT_V = 14200
+    MAX_PS_OUTPUT_MW = 490
+    MIN_PS_OUTPUT_MW = 10
+
+    def __init__(
+        self,
+        env: simpy.Environment,
+        bus: CommunicationBus,
+        known_stations: list[str],
+        known_rtus: list[str],
+    ):
         self.env = env
         self.bus = bus
-        self.known_nodes = known_nodes
-        self.debug = False
-        self.max_rtu_voltage = 225
+        self.known_stations = set(known_stations)
+        self.known_rtus = set(known_rtus)
+        self.event_log: list[dict[str, Any]] = []
+        self.telemetry: dict[str, dict[str, Any]] = {}
+
+    def log(self, msg: str, level: str = "INFO"):
+        entry = {"time": convert_time(self.env.now), "raw_time": self.env.now, "level": level, "msg": msg}
+        self.event_log.append(entry)
+        prefix = "WARNING " if level == "WARN" else ("ERROR " if level == "ALARM" else "")
+        print(f"[{entry['time']}] SCADA {prefix}{msg}")
 
     def run(self):
         while True:
             pkt: Packet = yield self.bus.receive("SCADA")
+            src = pkt.source
+            d = pkt.data
 
-            if self.debug:
-                print(f"[{convert_time(self.env.now)}] SCADA received pkt from {pkt.source}")
+            self.telemetry[src] = {**d, "_time": self.env.now}
 
-            voltage = pkt.data.get("voltage", 0)
+            ptype = d.get("type", "")
 
-            #  safety system for rtu
-            if voltage > self.max_rtu_voltage and pkt.source in self.known_nodes and "RTU" in pkt.source:
-                self.send_command(pkt.source, {"action": "reduce_voltage", "volts": 15})
+            if src in self.known_stations and ptype == "telemetry":
+                mw = d.get("output_mw", 0)
+                if mw > self.MAX_PS_OUTPUT_MW:
+                    self.log(f"{src} over-generating ({mw:.1f} MW), limit", "WARN")
+                    self.send_command(src, {"action": "limit_output", "mw": 30})
+                if not d.get("online", True):
+                    self.log(f"{src} reports OFFLINE", "ALARM")
+
+            elif src in self.known_rtus and ptype == "telemetry":
+                ov = d.get("output_voltage", 0)
+                if ov > self.MAX_RTU_OUTPUT_V:
+                    self.log(f"{src} output voltage {ov:.0f} V too high, reduce", "WARN")
+                    self.send_command(src, {"action": "reduce_voltage", "volts": 200})
+                if d.get("alarm"):
+                    self.log(f"{src} raised an alarm!", "ALARM")
+
+            elif ptype == "mdms_alert":
+                self.log(f"MDMS alert: {d.get('message', d)}", "WARN")
 
     def send_command(self, target: str, cmd: dict[str, Any]):
         pkt = Packet(
@@ -34,8 +67,5 @@ class SCADA:
             size=64,
             data=cmd,
         )
-
-        if self.debug:
-            print(f"[{convert_time(self.env.now)}] SCADA -> {target}: {cmd}")
-
+        self.log(f"CMD, {target}: {cmd}")
         self.bus.send(pkt)

@@ -1,33 +1,111 @@
+import json
 import simpy
-from grid_layer.scada import SCADA
-from network_layer.communication_bus import CommunicationBus
 
-# from network_layer.packet import Packet
+from generation_layer.meter_data_management_system import MeterDataManagementSystem
+from generation_layer.smart_meter import SmartMeter
+from network_layer.communication_bus import CommunicationBus
 from generation_layer.power_station import PowerStation
+from grid_layer.scada import SCADA
+from network_layer.remote_terminal_unit import RemoteTerminalUnit
 
 SECOND = 1
 MINUTE = 60 * SECOND
 HOUR = 60 * MINUTE
+SIM_DURATION = 2 * HOUR
+
+
+def build_grid(env: simpy.Environment, bus: CommunicationBus):
+    stations = {
+        "PS-1": PowerStation(env, "PS-1", bus, voltage=345_000.0, capacity_mw=600.0),
+        "PS-2": PowerStation(env, "PS-2", bus, voltage=345_000.0, capacity_mw=400.0),
+        "PS-3": PowerStation(env, "PS-3", bus, voltage=500_000.0, capacity_mw=800.0),
+    }
+
+    rtus = {
+        "RTU-North": RemoteTerminalUnit(
+            env,
+            "RTU-North",
+            bus,
+            input_voltage=345_000.0,
+            output_voltage=13_800.0,
+            load_mw=90.0,
+        ),
+        "RTU-South": RemoteTerminalUnit(
+            env,
+            "RTU-South",
+            bus,
+            input_voltage=345_000.0,
+            output_voltage=13_600.0,
+            load_mw=75.0,
+        ),
+    }
+
+    north_meters = {f"HOME-{i}": SmartMeter(env, f"HOME-{i}", bus, "MDMS-North", voltage=120.0, base_consumption_kw=2.0 + i * 0.3) for i in range(1, 6)}
+    south_meters = {f"HOME-{i}": SmartMeter(env, f"HOME-{i}", bus, "MDMS-South", voltage=120.0, base_consumption_kw=1.5 + i * 0.2) for i in range(6, 11)}
+
+    mdms_north = MeterDataManagementSystem(env, "MDMS-North", bus, list(north_meters.keys()))
+    mdms_south = MeterDataManagementSystem(env, "MDMS-South", bus, list(south_meters.keys()))
+
+    scada = SCADA(
+        env,
+        bus,
+        known_stations=list(stations.keys()),
+        known_rtus=list(rtus.keys()),
+    )
+
+    return stations, rtus, north_meters, south_meters, mdms_north, mdms_south, scada
 
 
 def main():
     env = simpy.Environment()
     bus = CommunicationBus(env)
 
-    stations = {
-        "PS-1": PowerStation(env, "PS-1", bus, voltage=676767.0),
-        "PS-2": PowerStation(env, "PS-2", bus, voltage=1234123.0),
-        "PS-3": PowerStation(env, "PS-3", bus, voltage=54343.0),
-    }
+    stations, rtus, north_meters, south_meters, mdms_north, mdms_south, scada = build_grid(env, bus)
 
-    scada = SCADA(env, bus, stations)
+    for ps in stations.values():
+        env.process(ps.run())
+        env.process(ps.listen())
 
-    for station in stations.values():
-        env.process(station.run())
-        env.process(station.listen())
+    for rtu in rtus.values():
+        env.process(rtu.run())
+        env.process(rtu.listen())
 
+    for meter in {**north_meters, **south_meters}.values():
+        env.process(meter.run())
+        env.process(meter.listen())
+
+    env.process(mdms_north.run())
+    env.process(mdms_south.run())
     env.process(scada.run())
-    env.run(until=100 * MINUTE)
+
+    print("=" * 60)
+    print("Starting Power Grid Sim:")
+    print(f"  Duration: {SIM_DURATION // HOUR} hours sim-time")
+    print("=" * 60)
+
+    env.run(until=SIM_DURATION)
+
+    print("\n" + "=" * 60)
+    print("Simulation Complete:")
+    print(f"  Total packets on bus: {len(bus.packet_log)}")
+    print(f"  SCADA events logged:  {len(scada.event_log)}")
+    print("=" * 60)
+
+    print("\nFinal SCADA telemetry snapshot:")
+    for node, data in scada.telemetry.items():
+        print(f"  {node}: {data}")
+
+    with open("simulation_results.json", "w") as f:
+        json.dump(
+            {
+                "scada_log": scada.event_log,
+                "packet_count": len(bus.packet_log),
+                "final_telemetry": {k: {kk: vv for kk, vv in v.items() if kk != "_time"} for k, v in scada.telemetry.items()},
+            },
+            f,
+            indent=2,
+        )
+    print("\nResults saved to simulation_results.json")
 
 
 if __name__ == "__main__":
