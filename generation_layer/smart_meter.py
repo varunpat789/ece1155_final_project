@@ -70,11 +70,11 @@ class SmartMeter:
             if not self.demand_response_active:
                 self.demand_response_active = True
                 self.consumption_kw *= 0.7
-                self.log(f"Demand-response ON — load reduced to {self.consumption_kw:.2f} kW")
+                self.log(f"Demand-response activated load reduced to {self.consumption_kw:.2f} kW")
         elif action == "demand_response_off":
             if self.demand_response_active:
                 self.demand_response_active = False
-                self.log("Demand-response OFF")
+                self.log("Demand-response disactivated")
         elif action == "reduce_voltage":
             new_v = self.voltage - cmd.get("volts", 5)
             self.voltage = max(self.MIN_VOLTAGE, new_v)

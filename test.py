@@ -1,3 +1,4 @@
+import csv
 import json
 import simpy
 
@@ -189,6 +190,15 @@ def main():
             indent=2,
         )
     print("\nResults saved to simulation_results.json")
+
+    with open("latency_trace.csv", "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["send_time", "deliver_time", "latency", "source", "destination", "queue_depth"],
+        )
+        writer.writeheader()
+        writer.writerows(bus.latency_log)
+    print(f"Latency trace saved to latency_trace.csv ({len(bus.latency_log)} rows)")
 
 
 if __name__ == "__main__":

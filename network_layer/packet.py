@@ -10,6 +10,7 @@ class Packet:
     timestamp: float
     size: int = 64
     data: dict[str, Any] = field(default_factory=dict)
+    send_time: float | None = None
 
     def __str__(self):
         return f"[{convert_time(self.timestamp)}] {self.source} -> {self.destination}: {self.data}"

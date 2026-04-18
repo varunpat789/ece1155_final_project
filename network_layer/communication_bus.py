@@ -18,6 +18,7 @@ class CommunicationBus:
         self.blocked_packet_log: list[dict[str, Any]] = []
         self.blacklisted_sources: set[str] = set()
         self.packet_monitors: list[PacketMonitor] = []
+        self.latency_log: list[dict[str, Any]] = []
 
     def get_store(self, destination: str) -> simpy.Store:
         if destination not in self.stores:
@@ -37,6 +38,7 @@ class CommunicationBus:
         return source in self.blacklisted_sources
 
     def send(self, packet: Packet) -> simpy.Process:
+        packet.send_time = self.env.now
         log_entry = {
             "time": self.env.now,
             "source": packet.source,
@@ -63,10 +65,24 @@ class CommunicationBus:
 
     def deliver(self, packet: Packet):
         store = self.get_store(packet.destination)
-        yield self.env.timeout(self.base_latency)
-        backed_up_delay = len(store.items) * self.delay_factor
-        yield self.env.timeout(backed_up_delay)
+        queue_depth_at_send = len(store.items)
+        backed_up_delay = queue_depth_at_send * self.delay_factor
+
+        yield self.env.timeout(self.base_latency + backed_up_delay)
         yield store.put(packet)
+
+        deliver_time = self.env.now
+        send_time = packet.send_time if packet.send_time is not None else packet.timestamp
+        self.latency_log.append(
+            {
+                "send_time": send_time,
+                "deliver_time": deliver_time,
+                "latency": deliver_time - send_time,
+                "source": packet.source,
+                "destination": packet.destination,
+                "queue_depth": queue_depth_at_send,
+            }
+        )
 
     def receive(self, destination: str):
         return self.get_store(destination).get()
