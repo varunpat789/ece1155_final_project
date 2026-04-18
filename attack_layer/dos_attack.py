@@ -3,18 +3,37 @@ Congestion generator that will infinitely send packets through the bus. This att
 when discovered.
 """
 
+import simpy
+from network_layer.communication_bus import CommunicationBus
 from network_layer.packet import Packet
 
+
 class CongestionGenerator:
-    def __init__(self, env, bus, attacker_ip="0.0.0.0", target="SCADA", interval=0.1):
+    def __init__(
+        self,
+        env: simpy.Environment,
+        bus: CommunicationBus,
+        attacker_ip: str = "0.0.0.0",
+        target: str = "SCADA",
+        interval: float = 0.1,
+        start_time: float = 0.0,
+        stop_time: float | None = None,
+    ):
         self.env = env
         self.bus = bus
         self.attacker_ip = attacker_ip
         self.target = target
         self.interval = interval
+        self.start_time = start_time
+        self.stop_time = stop_time
+        self.packets_sent = 0
 
     def run(self):
-        while True:
+        if self.env.now < self.start_time:
+            yield self.env.timeout(self.start_time - self.env.now)
+
+        while self.stop_time is None or self.env.now < self.stop_time:
+            self.packets_sent += 1
             pkt = Packet(
                 source=self.attacker_ip,
                 destination=self.target,
