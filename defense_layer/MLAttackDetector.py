@@ -11,14 +11,8 @@ class MLAttackDetector:
         self.records: list[dict[str, Any]] = []
 
     def predict(self, features: dict[str, Any]) -> str:
-        if features["is_honeypot_hit"]:
+        if not features["is_known_source"] and features["total_packets_from_source"] > 250:
             return "attack"
-
-        if not features["is_known_source"]:
-            return "attack"
-
-        if features["total_packets_from_source"] > 50:
-            return "suspicious"
 
         return "normal"
 
