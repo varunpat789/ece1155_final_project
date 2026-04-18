@@ -12,8 +12,9 @@ class CommunicationBus:
     def __init__(self, env: simpy.Environment):
         self.env = env
         self.base_latency = 1.0
-        self.delay_factor = 0.05
+        self.delay_factor = 0.1
         self.stores: dict[str, simpy.Store] = {}
+        self.in_flight: dict[str, int] = {}  # NEW: packets currently being delivered
         self.packet_log: list[dict[str, Any]] = []
         self.blocked_packet_log: list[dict[str, Any]] = []
         self.blacklisted_sources: set[str] = set()
@@ -64,12 +65,17 @@ class CommunicationBus:
         yield self.env.timeout(0)
 
     def deliver(self, packet: Packet):
-        store = self.get_store(packet.destination)
-        queue_depth_at_send = len(store.items)
-        backed_up_delay = queue_depth_at_send * self.delay_factor
+        dest = packet.destination
+        # Count packets already in flight to the same destination.
+        queue_depth = self.in_flight.get(dest, 0)
+        self.in_flight[dest] = queue_depth + 1
 
-        yield self.env.timeout(self.base_latency + backed_up_delay)
-        yield store.put(packet)
+        backed_up_delay = queue_depth * self.delay_factor
+        try:
+            yield self.env.timeout(self.base_latency + backed_up_delay)
+            yield self.get_store(dest).put(packet)
+        finally:
+            self.in_flight[dest] -= 1
 
         deliver_time = self.env.now
         send_time = packet.send_time if packet.send_time is not None else packet.timestamp
@@ -80,7 +86,7 @@ class CommunicationBus:
                 "latency": deliver_time - send_time,
                 "source": packet.source,
                 "destination": packet.destination,
-                "queue_depth": queue_depth_at_send,
+                "queue_depth": queue_depth,
             }
         )
 
