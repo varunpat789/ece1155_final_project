@@ -6,9 +6,8 @@ from sim_layer.utils import convert_time
 
 
 class SCADA:
-    MAX_RTU_OUTPUT_V = 14200
-    MAX_PS_OUTPUT_MW = 490
-    MIN_PS_OUTPUT_MW = 10
+    MAX_RTU_OUTPUT_V = 14_200
+    PS_OVERLOAD_FRACTION = 0.95
 
     def __init__(
         self,
@@ -42,9 +41,14 @@ class SCADA:
 
             if src in self.known_stations and ptype == "telemetry":
                 mw = d.get("output_mw", 0)
-                if mw > self.MAX_PS_OUTPUT_MW:
-                    self.log(f"{src} over-generating ({mw:.1f} MW), limit", "WARN")
-                    self.send_command(src, {"action": "limit_output", "mw": 30})
+                capacity = d.get("capacity_mw", 500)
+                overload_limit = capacity * self.PS_OVERLOAD_FRACTION
+                if mw > overload_limit:
+                    self.log(
+                        f"{src} over-generating ({mw:.1f}/{capacity:.0f} MW), capping",
+                        "WARN",
+                    )
+                    self.send_command(src, {"action": "limit_output", "mw": capacity * 0.8})
                 if not d.get("online", True):
                     self.log(f"{src} reports OFFLINE", "ALARM")
 

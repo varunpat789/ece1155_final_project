@@ -1,14 +1,17 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import simpy
 from network_layer.communication_bus import CommunicationBus
 from network_layer.packet import Packet
 from sim_layer.utils import convert_time
 
+if TYPE_CHECKING:
+    from network_layer.remote_terminal_unit import RemoteTerminalUnit
+
 
 class MeterDataManagementSystem:
-    MAX_METER_VOLTAGE = 127.0
-    MIN_METER_VOLTAGE = 108.0
-    DEMAND_RESPONSE_KW = 4.0
+    MAX_METER_VOLTAGE = 125.0
+    MIN_METER_VOLTAGE = 114.0
+    DEMAND_RESPONSE_KW = 4.5
 
     def __init__(
         self,
@@ -16,12 +19,14 @@ class MeterDataManagementSystem:
         name: str,
         bus: CommunicationBus,
         meter_names: list[str],
+        rtu_map: dict[str, "RemoteTerminalUnit"] | None = None,
     ):
         self.env = env
         self.name = name
         self.bus = bus
         self.meter_names = set(meter_names)
         self.readings: dict[str, dict[str, Any]] = {}
+        self.rtu_map = rtu_map or {}
         self.event_log: list[dict[str, Any]] = []
 
     def log(self, msg: str, level: str = "INFO"):
@@ -52,6 +57,22 @@ class MeterDataManagementSystem:
             if kw > self.DEMAND_RESPONSE_KW and not d.get("demand_response_active"):
                 self.log(f"{pkt.source} excess consumption {kw:.2f} kW, demand response", "WARN")
                 self.send_command(pkt.source, {"action": "demand_response_on"})
+
+            self._update_feeder_loads()
+
+    def _update_feeder_loads(self):
+        if not self.rtu_map:
+            return
+        totals: dict[str, float] = {}
+        for reading in self.readings.values():
+            feeder = reading.get("feeder")
+            if feeder is None:
+                continue
+            totals[feeder] = totals.get(feeder, 0.0) + reading.get("consumption_kw", 0.0)
+        for feeder, total_kw in totals.items():
+            rtu = self.rtu_map.get(feeder)
+            if rtu is not None and hasattr(rtu, "update_residential_load"):
+                rtu.update_residential_load(total_kw)
 
     def send_command(self, target: str, cmd: dict[str, Any]):
         pkt = Packet(

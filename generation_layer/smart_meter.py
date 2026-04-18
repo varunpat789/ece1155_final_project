@@ -7,12 +7,17 @@ from sim_layer.utils import convert_time
 
 
 class SmartMeter:
+    MIN_CONSUMPTION_KW = 0.2
+    MAX_CONSUMPTION_KW = 6.0
+    MIN_VOLTAGE = 100.0
+
     def __init__(
         self,
         env: simpy.Environment,
         name: str,
         bus: CommunicationBus,
         mdms_name: str,
+        feeder: str,
         voltage: float = 120.0,
         base_consumption_kw: float = 2.5,
     ):
@@ -20,6 +25,8 @@ class SmartMeter:
         self.name = name
         self.bus = bus
         self.mdms_name = mdms_name
+        self.feeder = feeder
+        self.nominal_voltage = voltage
         self.voltage = voltage
         self.consumption_kw = base_consumption_kw
         self.demand_response_active = False
@@ -33,8 +40,8 @@ class SmartMeter:
     def run(self):
         while True:
             self.consumption_kw = max(
-                0.2,
-                self.consumption_kw + random.uniform(-0.3, 0.3),
+                self.MIN_CONSUMPTION_KW,
+                min(self.MAX_CONSUMPTION_KW, self.consumption_kw + random.uniform(-0.2, 0.2)),
             )
             pkt = Packet(
                 source=self.name,
@@ -43,13 +50,14 @@ class SmartMeter:
                 size=64,
                 data={
                     "type": "meter_reading",
-                    "voltage": self.voltage + random.uniform(-2, 2),
+                    "feeder": self.feeder,
+                    "voltage": self.voltage + random.uniform(-1, 1),
                     "consumption_kw": round(self.consumption_kw, 3),
                     "demand_response_active": self.demand_response_active,
                 },
             )
             self.bus.send(pkt)
-            yield self.env.timeout(15)
+            yield self.env.timeout(60)
 
     def listen(self):
         while True:
@@ -59,12 +67,20 @@ class SmartMeter:
     def handle(self, cmd: dict[str, Any]):
         action = cmd.get("action")
         if action == "demand_response_on":
-            self.demand_response_active = True
-            self.consumption_kw *= 0.7
-            self.log(f"Demand-response ON — load reduced to {self.consumption_kw:.2f} kW")
+            if not self.demand_response_active:
+                self.demand_response_active = True
+                self.consumption_kw *= 0.7
+                self.log(f"Demand-response ON — load reduced to {self.consumption_kw:.2f} kW")
         elif action == "demand_response_off":
-            self.demand_response_active = False
-            self.log("Demand-response OFF")
+            if self.demand_response_active:
+                self.demand_response_active = False
+                self.log("Demand-response OFF")
         elif action == "reduce_voltage":
-            self.voltage -= cmd.get("volts", 5)
+            new_v = self.voltage - cmd.get("volts", 5)
+            self.voltage = max(self.MIN_VOLTAGE, new_v)
             self.log(f"Voltage reduced to {self.voltage:.1f} V")
+        elif action == "set_feeder_voltage":
+            rtu_v = cmd.get("rtu_voltage")
+            rtu_nominal = cmd.get("rtu_nominal", 13_800.0)
+            if rtu_v is not None:
+                self.voltage = self.nominal_voltage * (rtu_v / rtu_nominal)

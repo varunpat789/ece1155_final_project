@@ -21,6 +21,8 @@ class PowerStation:
         self.voltage = voltage
         self.capacity_mw = capacity_mw
         self.output_mw = capacity_mw * 0.8
+        # note: output capped by SCADA
+        self.output_cap_mw: float | None = None
         self.online = True
         self.event_log: list[str] = []
 
@@ -36,6 +38,8 @@ class PowerStation:
                     0,
                     min(self.capacity_mw, self.output_mw + random.uniform(-5, 5)),
                 )
+                if self.output_cap_mw is not None and self.output_mw > self.output_cap_mw:
+                    self.output_mw = self.output_cap_mw
 
             pkt = Packet(
                 source=self.name,
@@ -44,8 +48,9 @@ class PowerStation:
                 size=64,
                 data={
                     "type": "telemetry",
-                    "voltalistge": self.voltage,
+                    "voltage": self.voltage,
                     "output_mw": self.output_mw,
+                    "capacity_mw": self.capacity_mw,
                     "online": self.online,
                 },
             )
@@ -64,9 +69,14 @@ class PowerStation:
             self.voltage -= cmd.get("volts", 10)
             self.log(f"Voltage reduced to {self.voltage:.1f} V")
         elif action == "limit_output":
-            mw = cmd.get("mw", 50)
-            self.output_mw = max(0, self.output_mw - mw)
-            self.log(f"Output limited to {self.output_mw:.1f} MW")
+            cap = cmd.get("mw", self.capacity_mw)
+            self.output_cap_mw = cap
+            if self.output_mw > cap:
+                self.output_mw = cap
+            self.log(f"Output capped at {cap:.1f} MW (current {self.output_mw:.1f} MW)")
+        elif action == "clear_limit":
+            self.output_cap_mw = None
+            self.log("Output cap cleared")
         elif action == "shutdown":
             self.online = False
             self.output_mw = 0
@@ -74,4 +84,5 @@ class PowerStation:
         elif action == "restore":
             self.online = True
             self.output_mw = self.capacity_mw * 0.8
+            self.output_cap_mw = None
             self.log(f"Station ONLINE, output={self.output_mw:.1f} MW")

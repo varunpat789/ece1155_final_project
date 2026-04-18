@@ -28,7 +28,7 @@ def build_grid(env: simpy.Environment, bus: CommunicationBus):
             bus,
             input_voltage=345_000.0,
             output_voltage=13_800.0,
-            load_mw=90.0,
+            base_load_mw=60.0,
         ),
         "RTU-South": RemoteTerminalUnit(
             env,
@@ -36,15 +36,49 @@ def build_grid(env: simpy.Environment, bus: CommunicationBus):
             bus,
             input_voltage=345_000.0,
             output_voltage=13_600.0,
-            load_mw=75.0,
+            base_load_mw=50.0,
         ),
     }
 
-    north_meters = {f"HOME-{i}": SmartMeter(env, f"HOME-{i}", bus, "MDMS-North", voltage=120.0, base_consumption_kw=2.0 + i * 0.3) for i in range(1, 6)}
-    south_meters = {f"HOME-{i}": SmartMeter(env, f"HOME-{i}", bus, "MDMS-South", voltage=120.0, base_consumption_kw=1.5 + i * 0.2) for i in range(6, 11)}
+    north_meters = {
+        f"HOME-{i}": SmartMeter(
+            env,
+            f"HOME-{i}",
+            bus,
+            mdms_name="MDMS-North",
+            feeder="RTU-North",
+            voltage=120.0,
+            base_consumption_kw=2.0 + i * 0.3,
+        )
+        for i in range(1, 6)
+    }
+    south_meters = {
+        f"HOME-{i}": SmartMeter(
+            env,
+            f"HOME-{i}",
+            bus,
+            mdms_name="MDMS-South",
+            feeder="RTU-South",
+            voltage=120.0,
+            base_consumption_kw=1.5 + i * 0.2,
+        )
+        for i in range(6, 11)
+    }
 
-    mdms_north = MeterDataManagementSystem(env, "MDMS-North", bus, list(north_meters.keys()))
-    mdms_south = MeterDataManagementSystem(env, "MDMS-South", bus, list(south_meters.keys()))
+    mdms_north = MeterDataManagementSystem(
+        env,
+        "MDMS-North",
+        bus,
+        meter_names=list(north_meters.keys()),
+        rtu_map={"RTU-North": rtus["RTU-North"]},
+    )
+    mdms_south = MeterDataManagementSystem(
+        env,
+        "MDMS-South",
+        bus,
+        meter_names=list(south_meters.keys()),
+        rtu_map={"RTU-South": rtus["RTU-South"]},
+    )
 
     scada = SCADA(
         env,
