@@ -1,2 +1,7 @@
 # ece1155_final_project
-elyse was here
+
+## Authored By: Elyse Chess, Varun Patel, Matthew Ketas
+
+## Description:
+
+This system simulates a smart grid using SimPy, a Python-based simulation framework chosen for its ease of use as well as ability to model complex networks and communication channels. The grid is composed of three core layers: a generation layer, a grid control layer, and a network layer. The generation layer consists of power stations, Remote Terminal Units (RTUs), and smart meters. Power stations periodically broadcast data packets containing voltage and generation output metrics, while RTUs report substation telemetry including input voltage, output voltage, and aggregated load. Smart meters report local voltage and consumption readings to a Meter Data Management System (MDMS). Each MDMS analyzes incoming data to identify conditions such as under-voltage, over-voltage, and abnormal consumption patterns, issuing local corrective commands when possible and forwarding alerts to the grid control layer when SCADA intervention is required. The grid control layer simulates a SCADA system that accepts telemetry from power stations and RTUs as well as alerts from the MDMS. Based on this information, SCADA performs real-time monitoring and issues corrective commands, such as capping generation output or reducing RTU voltage, to maintain stability within the grid. The network layer consists of a shared communication bus that carries all inter-component traffic. Every packet incurs a fixed propagation delay representing link transmission time, plus a variable congestion delay proportional to the number of packets already in flight to the same destination, so queuing delay grows as traffic volume increases.
